@@ -47,6 +47,8 @@ def handle_missing_values(df):
 def normalize_features(df):
     num_cols = df.select_dtypes(include=[np.number]).columns
     for col in num_cols:
+        if col in ["srch_id","prop_id"]:
+            continue
         if df[col].nunique() > 2:
             q1, q3 = df[col].quantile(0.25), df[col].quantile(0.75)
             iqr = q3 - q1
