@@ -88,7 +88,8 @@ if __name__ == "__main__":
     srch_ids_test = X_test['srch_id'].copy() if 'srch_id' in X_test.columns else None
     prop_ids_test = X_test['prop_id'].copy() if 'prop_id' in X_test.columns else None
 
-    drop_cols = [col for col in ['srch_id', 'prop_id', 'date_time'] if col in X_train.columns and col in X_test.columns]
+    #drop_cols = [col for col in ['srch_id', 'prop_id', 'date_time'] if col in X_train.columns and col in X_test.columns]
+    drop_cols = [col for col in ['srch_id', 'prop_id', 'date_time','price_usd','prop_starrating','visitor_hist_adr_usd','prop_location_score1','prop_review_score','srch_length_of_stay'] if col in X_train.columns]
     X_train_model = X_train.drop(columns=drop_cols, errors='ignore')
     X_test_model = X_test.drop(columns=drop_cols, errors='ignore')
 
@@ -143,5 +144,5 @@ if __name__ == "__main__":
 
     result_df['rank'] = result_df.groupby('srch_id')['click_proba'].rank(method='first', ascending=False)
     submission = result_df.sort_values(by=['srch_id', 'rank'])[['srch_id', 'prop_id']]
-    submission.to_csv("submission.csv", index=False)
+    submission.to_csv("submission_catboostclassifier.csv", index=False)
     print("✅ Submission file saved as 'submission.csv'")

@@ -96,7 +96,8 @@ if __name__ == "__main__":
     prop_ids_test = X_test['prop_id'].copy()
 
     # Drop non-feature columns
-    drop_cols = [col for col in ['srch_id', 'prop_id', 'date_time'] if col in X_train.columns]
+    #drop_cols = [col for col in ['srch_id', 'prop_id', 'date_time'] if col in X_train.columns]
+    drop_cols = [col for col in ['srch_id', 'prop_id', 'date_time','price_usd','prop_starrating','visitor_hist_adr_usd','prop_location_score1','prop_review_score','srch_length_of_stay'] if col in X_train.columns]
     X_train_model = X_train.drop(columns=drop_cols, errors='ignore')
     X_test_model = X_test.drop(columns=drop_cols, errors='ignore')
 
