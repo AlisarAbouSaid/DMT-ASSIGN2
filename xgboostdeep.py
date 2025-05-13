@@ -63,6 +63,7 @@ def add_custom_features(df):
             df['price_diff_to_hist'] = df['price_usd'] - df['visitor_hist_adr_usd'].fillna(df['price_usd'])
             df['price_ratio_to_hist'] = df['price_usd'] / (df['visitor_hist_adr_usd'].fillna(df['price_usd']) + 1)
 
+
     if 'prop_starrating' in df.columns:
         df['starrating_squared'] = df['prop_starrating'] ** 2
         if 'visitor_hist_starrating' in df.columns:
@@ -76,6 +77,21 @@ def add_custom_features(df):
         df['date_time'] = pd.to_datetime(df['date_time'])
         df['day_of_week'] = df['date_time'].dt.dayofweek
         df['is_weekend'] = df['day_of_week'].isin([5, 6]).astype(int)
+        df['year'] = df['date_time'].dt.year
+        df['month'] = df['date_time'].dt.month
+        df['day'] = df['date_time'].dt.day
+        df['hour'] = df['date_time'].dt.hour
+    # Calculate average price per property
+    if 'price_usd' in df.columns and 'prop_id' in df.columns:
+        avg_price = df.groupby('prop_id')['price_usd'].mean().rename('avg_price_per_prop_id')
+        std_price = df.groupby('prop_id')['price_usd'].std().rename('std_price_per_prop_id')
+        median_price = df.groupby('prop_id')['price_usd'].median().rename('median_price_per_prop_id')
+
+        df = df.merge(avg_price, on='prop_id', how='left')
+        df = df.merge(std_price, on='prop_id', how='left')
+        df = df.merge(median_price, on='prop_id', how='left')
+        df['price_diff_to_avg'] = df['price_usd'] - df['avg_price_per_prop_id'].fillna(df['price_usd'])
+        df['price_ratio_to_avg'] = df['price_usd'] / (df['avg_price_per_prop_id'].fillna(df['price_usd']) + 1)
 
     return df
 
@@ -107,7 +123,6 @@ test_df = normalize_features(test_df)
 drop_cols = ['srch_id', 'prop_id', 'date_time','position', 'click_bool', 'gross_bookings_usd', 'booking_bool']
 features = [col for col in train_df.columns if col not in drop_cols]
 
-
 X = train_df[features]
 y = train_df['booking_bool'] * 5 + train_df['click_bool']  # Weighted target
 group = train_df.groupby('srch_id').size().to_frame('size')['size'].to_numpy()
@@ -124,13 +139,26 @@ for train_idx, valid_idx in gkf.split(X, y, groups=srch_ids):
     group_train = train_df.iloc[train_idx].groupby('srch_id').size().to_numpy()
     group_valid = train_df.iloc[valid_idx].groupby('srch_id').size().to_numpy()
 
+    #model = XGBRanker(
+     #   objective='rank:pairwise',
+      #  learning_rate=0.1,
+      #  n_estimators=100,
+      #  max_depth=6,
+      #  subsample=0.75,
+      #  colsample_bytree=0.75,
+      #  random_state=42,
+      #  tree_method='hist',
+      #  verbosity=1
+    #)
     model = XGBRanker(
         objective='rank:pairwise',
         learning_rate=0.1,
         n_estimators=100,
-        max_depth=6,
+        max_depth=8,
         subsample=0.75,
         colsample_bytree=0.75,
+        reg_alpha=0.1,  # L1 regularization term (try 0.1 or tune via CV)
+        reg_lambda=1.0,  # L2 regularization term (default is 1.0, adjust as needed)
         random_state=42,
         tree_method='hist',
         verbosity=1
@@ -174,8 +202,10 @@ for feature, importance in sorted_importances:
     print(f"{feature}: {importance:.4f}")
 
 # 7. Create submission
-submission = test_df[['srch_id', 'prop_id', 'prediction']]
-submission.sort_values(['srch_id', 'prediction'], ascending=[True, False], inplace=True)
-submission.drop('prediction', axis=1).to_csv("submission.csv", index=False)
+
+submission = test_df.sort_values(by=['srch_id', 'prediction'], ascending=[True, False])[['srch_id', 'prop_id']]
+submission.to_csv("submission.csv", index=False)
 print("Submission file created: submission.csv")
+
+
 
