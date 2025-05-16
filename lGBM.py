@@ -14,6 +14,7 @@ test_df = pd.read_csv(test_file)
 
 
 
+
 def handle_missing_values(df):
     low_missing_cols = ['prop_review_score', 'prop_location_score1']
     for col in low_missing_cols:
@@ -21,8 +22,7 @@ def handle_missing_values(df):
             df[col + '_missing'] = df[col].isna().astype(int)
             df[col] = df[col].fillna(df[col].median())
 
-    #moderate_missing_cols = ['prop_location_score2', 'orig_destination_distance']
-    moderate_missing_cols = ['prop_location_score2']
+    moderate_missing_cols = ['', 'orig_destination_distance']
     for col in moderate_missing_cols:
         if col in df.columns:
             df[col + '_missing'] = df[col].isna().astype(int)
@@ -45,10 +45,11 @@ def handle_missing_values(df):
 
     return df
 
+
 def normalize_features(df):
     num_cols = df.select_dtypes(include=[np.number]).columns
     for col in num_cols:
-        if col in ["srch_id","prop_id"]:
+        if col in ["srch_id", "prop_id"]:
             continue
         if df[col].nunique() > 2:
             q1, q3 = df[col].quantile(0.25), df[col].quantile(0.75)
@@ -57,6 +58,7 @@ def normalize_features(df):
                 df[col] = (df[col] - df[col].median()) / iqr
     return df
 
+
 def add_custom_features(df):
     if 'price_usd' in df.columns:
         df['price_log'] = np.log1p(df['price_usd'])
@@ -64,15 +66,23 @@ def add_custom_features(df):
             df['price_diff_to_hist'] = df['price_usd'] - df['visitor_hist_adr_usd'].fillna(df['price_usd'])
             df['price_ratio_to_hist'] = df['price_usd'] / (df['visitor_hist_adr_usd'].fillna(df['price_usd']) + 1)
 
-
     if 'prop_starrating' in df.columns:
         df['starrating_squared'] = df['prop_starrating'] ** 2
         if 'visitor_hist_starrating' in df.columns:
-            df['star_diff_to_hist'] = df['prop_starrating'] - df['visitor_hist_starrating'].fillna(df['prop_starrating'])
+            df['star_diff_to_hist'] = df['prop_starrating'] - df['visitor_hist_starrating'].fillna(
+                df['prop_starrating'])
 
     if 'prop_location_score1' in df.columns and 'prop_location_score2' in df.columns:
         df['location_score_avg'] = (df['prop_location_score1'] + df['prop_location_score2']) / 2
         df['location_score_diff'] = df['prop_location_score1'] - df['prop_location_score2']
+        overall_mean = df['prop_location_score2'].mean()
+        overall_std = df['prop_location_score2'].std()
+        df['prop_location_score2_mean'] = overall_mean
+        df['prop_location_score2_std'] = overall_std
+        # Optionally, compute the z-score
+        df['prop_location_score2_zscore'] = (
+                (df['prop_location_score2'] - overall_mean) / overall_std
+        )
 
     if 'date_time' in df.columns:
         df['date_time'] = pd.to_datetime(df['date_time'])
@@ -93,8 +103,47 @@ def add_custom_features(df):
         df = df.merge(median_price, on='prop_id', how='left')
         df['price_diff_to_avg'] = df['price_usd'] - df['avg_price_per_prop_id'].fillna(df['price_usd'])
         df['price_ratio_to_avg'] = df['price_usd'] / (df['avg_price_per_prop_id'].fillna(df['price_usd']) + 1)
+    # --- Per-search (srch_id) statistics ---
+    if 'price_usd' in df.columns and 'srch_id' in df.columns:
+        df['price_per_star'] = df['price_usd'] / (df['prop_starrating'] + 0.1)
+
+        search_group = df.groupby('srch_id')
+
+        df['avg_price_per_search'] = search_group['price_usd'].transform('mean')
+        df['median_price_per_search'] = search_group['price_usd'].transform('median')
+        df['std_price_per_search'] = search_group['price_usd'].transform('std')
+
+        df['avg_rating_per_search'] = search_group['prop_starrating'].transform('mean')
+        df['median_rating_per_search'] = search_group['prop_starrating'].transform('median')
+
+        df['avg_price_per_star_in_search'] = search_group['price_per_star'].transform('mean')
+
+        # Relative features within the search
+        df['price_diff_to_search_avg'] = df['price_usd'] - df['avg_price_per_search']
+        df['price_ratio_to_search_avg'] = df['price_usd'] / (df['avg_price_per_search'] + 1)
+
+        df['rating_diff_to_search_avg'] = df['prop_starrating'] - df['avg_rating_per_search']
+        # --- Normalized review score ---
+        if 'prop_review_score' in df.columns:
+            df['max_review_score_in_search'] = search_group['prop_review_score'].transform('max')
+            df['normalized_review_score'] = df['prop_review_score'] / (df['max_review_score_in_search'] + 1e-5)
+
+        df['price_order'] = search_group['price_usd'].rank(method='min', ascending=True)
+        df['price_usd_srch_normed'] = df['price_usd'] / df.groupby('srch_id')['price_usd'].transform('mean')
+
+    if 'price_usd' in df.columns and 'srch_length_of_stay' in df.columns:
+        df['price_per_night'] = df['price_usd'] / (df['srch_length_of_stay'] + 1e-5)
+
+    if 'prop_location_score2' in df.columns and 'srch_id' in df.columns:
+        df['prop_location_score2_srch_mean'] = df.groupby('srch_id')['prop_location_score2'].transform('mean')
+        df['prop_location_score2_srch_std'] = df.groupby('srch_id')['prop_location_score2'].transform('std')
+        df['prop_location_score2_srch_zscore'] = (
+                (df['prop_location_score2'] - df['prop_location_score2_srch_mean']) / df[
+            'prop_location_score2_srch_std']
+        )
 
     return df
+
 
 # 2. Feature Engineering (example features)
 def feature_engineering(df):
@@ -135,6 +184,12 @@ drop_cols = [
 ]
 
 features = [col for col in train_df.columns if col not in drop_cols]
+
+
+#from sklearn.utils import shuffle
+
+# Shuffle the entire dataset (rows), keeping the index consistent
+#rain_df = shuffle(train_df, random_state=42).reset_index(drop=True)
 
 
 X = train_df[features]
