@@ -138,6 +138,12 @@ def add_custom_features(df):
                 (df['prop_location_score2'] - df['prop_location_score2_srch_mean']) / df[
             'prop_location_score2_srch_std']
         )
+    
+    if 'prop_id' in df.columns and 'booking_bool' in df.columns:
+        df['prop_booking_prob'] = df.groupby('prop_id')['booking_bool'].transform('mean')
+
+    if 'prop_id' in df.columns and 'clicking_bool' in df.columns:
+        df['prop_clicking_prob'] = df.groupby('prop_id')['clicking_bool'].transform('mean')
 
     return df
 
