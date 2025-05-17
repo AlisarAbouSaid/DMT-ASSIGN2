@@ -142,8 +142,14 @@ def add_custom_features(df):
     if 'prop_id' in df.columns and 'booking_bool' in df.columns:
         df['prop_booking_prob'] = df.groupby('prop_id')['booking_bool'].transform('mean')
 
-    if 'prop_id' in df.columns and 'clicking_bool' in df.columns:
-        df['prop_clicking_prob'] = df.groupby('prop_id')['clicking_bool'].transform('mean')
+    if 'prop_id' in df.columns and 'click_bool' in df.columns:
+        df['prop_click_prob'] = df.groupby('prop_id')['click_bool'].transform('mean')
+
+    if 'srch_destination_id' in df.columns and 'booking_bool' in df.columns:
+        df['dest_booking_prob'] = df.groupby('srch_destination_id')['booking_bool'].transform('mean')
+
+    if 'srch_destination_id' in df.columns and 'click_bool' in df.columns:
+        df['dest_click_prob'] = df.groupby('srch_destination_id')['click_bool'].transform('mean')
 
     return df
 
@@ -167,6 +173,16 @@ test_df = handle_missing_values(test_df)
 test_df = feature_engineering(test_df)
 test_df = add_custom_features(test_df)
 test_df = normalize_features(test_df)
+
+prop_stats = train_df[['prop_id', 'prop_booking_prob', 'prop_click_prob']].drop_duplicates('prop_id')
+test_df = test_df.merge(prop_stats, on='prop_id', how='left')
+test_df['prop_booking_prob'] = test_df['prop_booking_prob'].fillna(train_df['prop_booking_prob'].mean())
+test_df['prop_click_prob'] = test_df['prop_click_prob'].fillna(train_df['prop_click_prob'].mean())
+
+dest_stats = train_df[['srch_destination_id', 'dest_booking_prob', 'dest_click_prob']].drop_duplicates('srch_destination_id')
+test_df = test_df.merge(dest_stats, on='srch_destination_id', how='left')
+test_df['dest_booking_prob'] = test_df['dest_booking_prob'].fillna(train_df['dest_booking_prob'].mean())
+test_df['dest_click_prob'] = test_df['dest_click_prob'].fillna(train_df['dest_click_prob'].mean())
 # 3. Define features and label
 #features = [
 #'price_usd', 'prop_starrating', 'prop_review_score', 'srch_length_of_stay',
