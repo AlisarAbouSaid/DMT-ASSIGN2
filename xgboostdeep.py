@@ -19,7 +19,7 @@ def handle_missing_values(df):
             df[col + '_missing'] = df[col].isna().astype(int)
             df[col] = df[col].fillna(df[col].median())
 
-    moderate_missing_cols = ['', 'orig_destination_distance']
+    moderate_missing_cols = ['orig_destination_distance']
     for col in moderate_missing_cols:
         if col in df.columns:
             df[col + '_missing'] = df[col].isna().astype(int)
@@ -138,20 +138,29 @@ def add_custom_features(df):
                 (df['prop_location_score2'] - df['prop_location_score2_srch_mean']) / df[
             'prop_location_score2_srch_std']
         )
-    
-    if 'prop_id' in df.columns and 'booking_bool' in df.columns:
-        df['prop_booking_prob'] = df.groupby('prop_id')['booking_bool'].transform('mean')
+    #if 'prop_id' in df.columns and 'booking_bool' in df.columns:
+    #df['prop_booking_prob'] = df.groupby('prop_id')['booking_bool'].transform('mean')
 
-    if 'prop_id' in df.columns and 'click_bool' in df.columns:
-        df['prop_click_prob'] = df.groupby('prop_id')['click_bool'].transform('mean')
-
-    if 'srch_destination_id' in df.columns and 'booking_bool' in df.columns:
-        df['dest_booking_prob'] = df.groupby('srch_destination_id')['booking_bool'].transform('mean')
-
-    if 'srch_destination_id' in df.columns and 'click_bool' in df.columns:
-        df['dest_click_prob'] = df.groupby('srch_destination_id')['click_bool'].transform('mean')
+    #if 'prop_id' in df.columns and 'click_bool' in df.columns:
+    #df['prop_click_prob'] = df.groupby('prop_id')['click_bool'].transform('mean')
 
     return df
+
+def compute_hotel_aggregates(train_df):
+    # Filter out random results
+    train_filtered = train_df[train_df['random_bool'] == 0].copy()
+
+    hotel_features = pd.DataFrame()
+
+    # Mean and std position
+    hotel_features['mean_position'] = train_filtered.groupby('prop_id')['position'].mean()
+    hotel_features['std_position'] = train_filtered.groupby('prop_id')['position'].std()
+
+    # Booking and click probabilities
+    hotel_features['prop_booking_prob'] = train_df.groupby('prop_id')['booking_bool'].mean()
+    hotel_features['prop_click_prob'] = train_df.groupby('prop_id')['click_bool'].mean()
+
+    return hotel_features.reset_index()
 
 
 # 2. Feature Engineering (example features)
@@ -166,6 +175,9 @@ def feature_engineering(df):
 train_df = handle_missing_values(train_df)
 
 train_df = feature_engineering(train_df)
+hotel_agg = compute_hotel_aggregates(train_df)
+train_df = train_df.merge(hotel_agg, on='prop_id', how='left')
+
 train_df = add_custom_features(train_df)
 train_df = normalize_features(train_df)
 test_df = handle_missing_values(test_df)
@@ -174,15 +186,21 @@ test_df = feature_engineering(test_df)
 test_df = add_custom_features(test_df)
 test_df = normalize_features(test_df)
 
-prop_stats = train_df[['prop_id', 'prop_booking_prob', 'prop_click_prob']].drop_duplicates('prop_id')
-test_df = test_df.merge(prop_stats, on='prop_id', how='left')
+#prop_stats = train_df[['prop_id', 'prop_booking_prob', 'prop_click_prob']].drop_duplicates('prop_id')
+#test_df = test_df.merge(prop_stats, on='prop_id', how='left')
+#test_df['prop_booking_prob'] = test_df['prop_booking_prob'].fillna(train_df['prop_booking_prob'].mean())
+#test_df['prop_click_prob'] = test_df['prop_click_prob'].fillna(train_df['prop_click_prob'].mean())
+# Extract all hotel-level aggregates from train (including mean/std position)
+hotel_aggregates = train_df[['prop_id', 'mean_position', 'std_position', 'prop_booking_prob', 'prop_click_prob']].drop_duplicates('prop_id')
+
+# Merge them into test_df
+test_df = test_df.merge(hotel_aggregates, on='prop_id', how='left')
+# Fill missing values for all these features with train means
+test_df['mean_position'] = test_df['mean_position'].fillna(train_df['mean_position'].mean())
+test_df['std_position'] = test_df['std_position'].fillna(train_df['std_position'].mean())
 test_df['prop_booking_prob'] = test_df['prop_booking_prob'].fillna(train_df['prop_booking_prob'].mean())
 test_df['prop_click_prob'] = test_df['prop_click_prob'].fillna(train_df['prop_click_prob'].mean())
 
-dest_stats = train_df[['srch_destination_id', 'dest_booking_prob', 'dest_click_prob']].drop_duplicates('srch_destination_id')
-test_df = test_df.merge(dest_stats, on='srch_destination_id', how='left')
-test_df['dest_booking_prob'] = test_df['dest_booking_prob'].fillna(train_df['dest_booking_prob'].mean())
-test_df['dest_click_prob'] = test_df['dest_click_prob'].fillna(train_df['dest_click_prob'].mean())
 # 3. Define features and label
 #features = [
 #'price_usd', 'prop_starrating', 'prop_review_score', 'srch_length_of_stay',
